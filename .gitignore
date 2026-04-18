@@ -1,0 +1,26 @@
+# Models - too large for git
+models/
+
+# Virtual environment
+venv/
+
+# config file
+config.json
+
+# Temp files generated during inference
+*-tempImg.png
+*-tempMask.png
+*.seed
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# VS Code
+.vscode/
+
+# Windows
+Thumbs.db
+desktop.ini

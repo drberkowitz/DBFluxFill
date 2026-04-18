@@ -1,0 +1,319 @@
+Group {
+ inputs 2
+ name DBFluxFill
+ tile_color 0xffbf00ff
+ knobChanged "import DBFluxFill.callbacks as cb\ncb.on_knob_changed(nuke.thisNode(), nuke.thisKnob())"
+ onCreate "import DBFluxFill.callbacks as cb\ncb.on_create(nuke.thisNode())"
+ addUserKnob {20 main_tab l "Flux Fill"}
+ addUserKnob {1 prompt l Prompt t "Optional text prompt to guide the fill.\nLeaving this empty works well for most inpainting.\nExamples: \"seamless sky\", \"natural background\", \"stone wall\""}
+ addUserKnob {26 prompt_help l " " T "<small>Empty prompt lets FLUX use surrounding context. Add a prompt to steer the result.</small>"}
+ addUserKnob {26 spacer3 l "" +STARTLINE}
+ addUserKnob {3 seed l Seed t "Random seed for reproducible results.\nSet to -1 for a random seed each generation."}
+ seed -1
+ addUserKnob {22 randomize_seed l Randomize -STARTLINE T "nuke.thisNode()\['seed'].setValue(-1)"}
+ addUserKnob {3 steps l Steps t "Number of inference steps.\n20 is a good balance of speed and quality.\nHigher values may improve detail but take longer."}
+ steps 20
+ addUserKnob {7 guidance l Guidance t "Guidance scale for FLUX Fill.\n2.5 is recommended for FLUX Fill Dev.\nHigher values follow the prompt more strictly."}
+ guidance 2.5
+ addUserKnob {26 spacer4 l "" +STARTLINE}
+ addUserKnob {4 prev_selector l "Preview Select" M {Input "Output For Flux" "" "" ""}}
+ addUserKnob {6 mask_overlay l "Mask Overlay" -STARTLINE}
+ addUserKnob {3 framehold_cntrl l Framehold}
+ framehold_cntrl 1001
+ addUserKnob {26 spacer5 l "" +STARTLINE}
+ addUserKnob {6 mask_invert l "Invert Mask" t "Invert the mask before sending to FLUX.\nBy default, white areas are filled.\nEnable this if your mask is inverted (black = fill)." -STARTLINE}
+ addUserKnob {6 crop_to_mask l "Crop to Mask" t "Crop the image to the mask bounding box before processing.\nThis focuses FLUX on just the fill region, improving quality\nand reducing processing time on large images.\nHighly recommended - disable only if seeing compositing issues." -STARTLINE}
+ crop_to_mask true
+ addUserKnob {3 crop_padding l "Crop Padding" t "Pixels of context to include around the mask bounding box.\nMore padding gives FLUX more context but increases processing area.\n32 pixels is a good default."}
+ crop_padding 25
+ addUserKnob {26 res_warning l "" +STARTLINE T ""}
+ addUserKnob {26 spacer6 l "" +STARTLINE}
+ addUserKnob {22 generate_btn l "Generate" T "import DBFluxFill.callbacks as cb\ncb.on_generate(nuke.thisNode())" +STARTLINE}
+ addUserKnob {22 generate_stay_btn "Generate (Keep Loaded)" T "import DBFluxFill.callbacks as cb\ncb.on_generate_stay(nuke.thisNode())" +STARTLINE}
+ addUserKnob {22 unload_model_btn "Unload Model" T "import DBFluxFill.callbacks as cb\ncb.on_unload_model(nuke.thisNode())" -STARTLINE}
+ addUserKnob {20 paths_tab l Paths}
+ addUserKnob {2 temp_dir l "Temp Directory" t "Directory for temporary PNG files sent to FLUX.\nThese are deleted automatically after each generation.\n\nTCL expressions are supported. Examples:\n  \[file dirname \[value root.name]]\n  \[file dirname \[file dirname \[value root.name]]]/temp\n\nLeaving blank will use the script directory."}
+ temp_dir "\[file dirname \[value root.name]]"
+ addUserKnob {26 temp_dir_prev l " " T " "}
+ addUserKnob {2 output_dir l "Output Directory" t "Directory where FLUX output PNGs are saved.\nThese are your results - they are not deleted automatically.\n\nTCL expressions are supported. Examples:\n  \[file dirname \[value root.name]]\n  \[file dirname \[file dirname \[value root.name]]]/renders\n\nLeaving blank will use the script directory."}
+ output_dir "\[file dirname \[value root.name]]"
+ addUserKnob {26 output_dir_prev l " " T " "}
+ addUserKnob {1 output_name l "Output Filename" t "Filename for the FLUX output PNG.\nTCL expressions are supported for dynamic naming.\n\nDefault uses script name + fluxfill + timestamp + frame number.\n\nExamples:\n  myshow_sq010_sh0100_v001  (hardcoded)\n  \[file rootname \[file tail \[value root.name]]]  (script name only)\n\nFrame number and .png extension are appended automatically."}
+ output_name "\[file rootname \[file tail \[value root.name]]]-fluxfill-\[clock format \[clock seconds] -format %Y%m%d_%H%M%S]"
+ addUserKnob {26 output_name_prev l " " T " "}
+ addUserKnob {20 about_tab l About}
+ addUserKnob {26 dbfluxfill_version l Version T 1.0.0}
+ addUserKnob {26 about_desc l "" +STARTLINE T "FLUX Fill for Nuke - AI-powered inpainting using FLUX.1 Fill Dev.\nBrings Black Forest Labs FLUX Fill into your Nuke workflow\nwith minimal setup required."}
+ addUserKnob {22 open_folder_btn l "Open Gizmo Folder" -STARTLINE T "import subprocess\nfor p in nuke.pluginPath():\n    candidate = os.path.join(p, \"DBFluxFill\")\n    if os.path.isdir(candidate):\n        subprocess.Popen(\[\"explorer\", candidate.replace(\"/\", \"\\\\\")])\n        break"}
+ addUserKnob {26 about_config_note l "" +STARTLINE T "<small>To change directory paths or Nuke Indie mode,\nedit <b>config.json</b> in the gizmo folder.</small>"}
+ addUserKnob {6 paths_initialised l "paths initialised" +INVISIBLE +STARTLINE}
+ paths_initialised false
+ addUserKnob {6 daemon_running l "daemon running" +INVISIBLE +STARTLINE}
+ daemon_running false
+}
+ Input {
+  inputs 0
+  name mask
+  xpos -198
+  ypos -239
+  number 1
+ }
+ Input {
+  inputs 0
+  name img
+  xpos 148
+  ypos -417
+ }
+ FrameHold {
+  firstFrame {{this.parent.framehold_cntrl}}
+  name FrameHold
+  xpos 148
+  ypos -364
+ }
+ Dot {
+  name Dot2
+  xpos 182
+  ypos -312
+ }
+set Ndb3d0000 [stack 0]
+ Dot {
+  name Dot3
+  xpos 33
+  ypos -312
+ }
+ Switch {
+  inputs 2
+  which {{"\[exists this.parent.input1]"}}
+  name SwitchMask
+  xpos -1
+  ypos -239
+ }
+set Ndb3d0800 [stack 0]
+ Shuffle2 {
+  fromInput1 {{0} B}
+  fromInput2 {{0} B}
+  mappings "4 rgba.alpha 0 3 rgba.red 0 0 rgba.alpha 0 3 rgba.green 0 1 rgba.alpha 0 3 rgba.blue 0 2 rgba.alpha 0 3 rgba.alpha 0 3"
+  name ShuffleAlpha
+  label "\[value in1]"
+  xpos -1
+  ypos -191
+ }
+ Remove {
+  operation keep
+  channels rgb
+  name RemoveChannelsFromMask
+  xpos -1
+  ypos -144
+ }
+ Clamp {
+  MinClampTo_enable true
+  MaxClampTo_enable true
+  name ClampMask
+  xpos -1
+  ypos -113
+ }
+ Invert {
+  name InvertMask
+  xpos -1
+  ypos -61
+  disable {{!this.parent.mask_invert}}
+ }
+ Reformat {
+  type "to box"
+  box_width {{Dot2.width}}
+  box_height {{Dot2.height}}
+  resize none
+  center false
+  pbb true
+  name ReformatToImg
+  xpos -1
+  ypos 1
+ }
+ Reformat {
+  type "to box"
+  box_width {{ReformatImgMinSize.box_width}}
+  box_height {{ReformatImgMinSize.box_height}}
+  resize distort
+  center false
+  name ReformatMinSize1
+  xpos -1
+  ypos 64
+  disable {{ReformatImgMinSize.disable}}
+ }
+ AdjBBox {
+  numpixels {{this.parent.crop_padding}}
+  name AdjBBoxMask
+  xpos -1
+  ypos 99
+ }
+ Crop {
+  box {{"int(floor(safe_bbox.x / 16.0)) * 16"} {"int(floor(safe_bbox.y / 16.0)) * 16"} {"int(floor(safe_bbox.r / 16.0)) * 16"} {"int(floor(safe_bbox.t / 16.0)) * 16"}}
+  crop false
+  name CropBBoxForFlux
+  xpos -1
+  ypos 136
+  addUserKnob {20 User}
+  addUserKnob {15 safe_bbox l "safe bbox"}
+  safe_bbox {{"min(int(floor(input.bbox.x / 16.0)) * 16, int(floor(((input.bbox.x + input.bbox.r) / 2 - 128) / 16.0)) * 16)"} {"min(int(floor(input.bbox.y / 16.0)) * 16, int(floor(((input.bbox.y + input.bbox.t) / 2 - 128) / 16.0)) * 16)"} {"max(int(ceil(input.bbox.r / 16.0)) * 16, int(ceil(((input.bbox.x + input.bbox.r) / 2 + 128) / 16.0)) * 16)"} {"max(int(ceil(input.bbox.t / 16.0)) * 16, int(ceil(((input.bbox.y + input.bbox.t) / 2 + 128) / 16.0)) * 16)"}}
+ }
+ Dot {
+  name Dot1
+  xpos 33
+  ypos 162
+ }
+set N54260c00 [stack 0]
+push $Ndb3d0000
+ Remove {
+  operation keep
+  channels rgb
+  name RemoveChannelsFromImg
+  xpos 148
+  ypos -204
+ }
+ Reformat {
+  type "to box"
+  box_width {{"max(input.width, 272)"}}
+  box_height {{"max(input.height, 272)"}}
+  resize distort
+  center false
+  name ReformatImgMinSize
+  xpos 148
+  ypos 85
+  disable {{"input.width >= 272 && input.height >= 272"}}
+ }
+ CopyBBox {
+  inputs 2
+  name CopyBBox
+  xpos 148
+  ypos 158
+  disable {{!this.parent.crop_to_mask}}
+ }
+ Crop {
+  box {{input.bbox.x} {input.bbox.y} {input.bbox.r} {input.bbox.t}}
+  reformat true
+  crop false
+  name CropImgToBBox
+  xpos 148
+  ypos 212
+  disable {{!this.parent.crop_to_mask}}
+ }
+ Reformat {
+  type "to box"
+  box_width {{"int(ceil(input.width / 16.0)) * 16"}}
+  box_height {{"int(ceil(input.height / 16.0)) * 16"}}
+  resize none
+  center false
+  name ReformatImgToFlux
+  xpos 148
+  ypos 267
+  disable {{this.parent.crop_to_mask}}
+ }
+ Crop {
+  box {0 0 {input.width} {input.height}}
+  crop false
+  name CropImgBackup
+  xpos 148
+  ypos 326
+ }
+set Nb8754c00 [stack 0]
+ Write {
+  file E:/Jobs/ChristmasCard2025/ChristmasCard2025_comp_v02-fluxfill-20260327_023810-tempImg.png
+  colorspace sRGB
+  file_type png
+  datatype "16 bit"
+  checkHashOnRead false
+  name WriteImg
+  xpos 148
+  ypos 516
+ }
+push $N54260c00
+ Crop {
+  box {{CropImgToBBox.box.x} {CropImgToBBox.box.y} {CropImgToBBox.box.r} {CropImgToBBox.box.t}}
+  reformat true
+  crop false
+  name CropMaskToBBox
+  xpos -1
+  ypos 220
+  disable {{!this.parent.crop_to_mask}}
+ }
+ Reformat {
+  type "to box"
+  box_width {{ReformatImgToFlux.box_width}}
+  box_height {{ReformatImgToFlux.box_height}}
+  resize none
+  center false
+  name ReformatMaskToFlux
+  xpos -1
+  ypos 268
+  disable {{this.parent.crop_to_mask}}
+ }
+ Crop {
+  box {0 0 {input.width} {input.height}}
+  crop false
+  name CropMaskBackup
+  xpos -1
+  ypos 427
+ }
+set N9e74e400 [stack 0]
+ Write {
+  file E:/Jobs/ChristmasCard2025/ChristmasCard2025_comp_v02-fluxfill-20260327_023810-tempMask.png
+  colorspace sRGB
+  file_type png
+  datatype "16 bit"
+  checkHashOnRead false
+  name WriteMask
+  xpos -1
+  ypos 540
+ }
+push $N9e74e400
+push $Nb8754c00
+ Dot {
+  name Dot5
+  xpos 357
+  ypos 330
+ }
+ Copy {
+  inputs 2
+  from0 rgba.red
+  to0 rgba.alpha
+  name CopyPrevOutput
+  xpos 323
+  ypos 421
+ }
+push $Ndb3d0800
+push $Ndb3d0000
+ Dot {
+  name Dot4
+  xpos 494
+  ypos -312
+ }
+ Copy {
+  inputs 2
+  from0 rgba.alpha
+  to0 rgba.alpha
+  name CopyPrevOG
+  xpos 460
+  ypos -245
+ }
+ Switch {
+  inputs 2
+  which {{this.parent.prev_selector}}
+  name SwitchPrevSelect
+  xpos 460
+  ypos 427
+ }
+ Grade {
+  white {1 0 0 1}
+  white_panelDropped true
+  maskChannelInput rgba.alpha
+  name GradeAlphaOverlay
+  xpos 460
+  ypos 470
+  disable {{!this.parent.mask_overlay}}
+ }
+ Output {
+  name Output1
+  xpos 460
+  ypos 541
+ }
+end_group
