@@ -33,7 +33,7 @@ DEFAULT_OUTPUT_NAME = "[file rootname [file tail [value root.name]]]-fluxfill-[c
 # Derive the gizmo root from installer location: .nuke/DBFluxFill/
 GIZMO_DIR   = os.path.dirname(os.path.abspath(__file__))
 MODELS_DIR  = os.path.join(GIZMO_DIR, "models")
-VENV_DIR    = os.path.join(GIZMO_DIR, "venv")
+PYTHON_DIR  = os.path.join(GIZMO_DIR, "python")
 CONFIG_PATH = os.path.join(GIZMO_DIR, "config.json")
 
 # TCL snippets shown in the path twirl-downs
@@ -339,7 +339,7 @@ class InstallerApp(tk.Tk):
         tk.Label(f, text="Welcome to DBFluxFill", font=("Helvetica", 16)).pack(anchor="w", pady=(16, 4))
         tk.Label(
             f,
-            text="AI inpainting with FLUX.1 Fill Dev inside Nuke!\n \nThis installer creates a Python virtual environment, downloads or locates FLUX.1 Fill Dev model components, writes a config.json with your chosen paths and settings, and installs all required dependencies.",
+            text="AI inpainting with FLUX.1 Fill Dev inside Nuke!\n \nThis installer sets up an embedded Python environment, downloads or locates FLUX.1 Fill Dev model components, writes a config.json with your chosen paths and settings, and installs all required dependencies.",
             justify="left",
             wraplength=WINDOW_WIDTH - 60,
             fg="#555555",
@@ -742,7 +742,7 @@ class InstallerApp(tk.Tk):
         base_size = int(float(raw_size))
         total_required = (base_size + 9) // 5 * 5
         self._size_note_label.config(
-            text=f"Download size: {info['size']} for all components. ~5 GB additional for the Python venv.\n"
+            text=f"Download size: {info['size']} for all components. ~5 GB additional for the embedded Python environment.\n"
                  f"Ensure at least {total_required} GB of free disk space before continuing."
         )
 
@@ -787,7 +787,7 @@ class InstallerApp(tk.Tk):
         tk.Label(f, text="Installing", font=("Helvetica", 16)).pack(anchor="w", pady=(16, 4))
         tk.Label(
             f,
-            text="Setting up the Python virtual environment, installing dependencies, and downloading model components. This may take a while.",
+            text="Setting up the embedded Python environment, installing dependencies, and downloading model components. This may take a while.",
             justify="left",
             wraplength=WINDOW_WIDTH - 60,
             fg="#555555",
@@ -832,7 +832,7 @@ class InstallerApp(tk.Tk):
         Runs in a background thread. Calls self._log() and self._set_progress()
         to update the UI. Never touches widgets directly.
         Steps:
-            1. Create venv
+            1. Set up embedded python enviroment
             2. Install pip dependencies
             3. Download models (token) or validate paths (manual)
             4. Write config.json
@@ -840,7 +840,7 @@ class InstallerApp(tk.Tk):
         """
         try:
             self._step_ensure_python311()
-            self._step_create_venv()
+            self._step_bootstrap_pip()
             self._step_install_deps()
             if self.manual_mode:
                 self._step_validate_manual_paths()
@@ -864,173 +864,71 @@ class InstallerApp(tk.Tk):
         self.after(0, lambda: self.status_label.config(text=text))
     
     def _step_ensure_python311(self):
-        self._set_status("Locating Python 3.11...")
-        self._log("Looking for Python 3.11...")
-        import subprocess, urllib.request, tempfile
+        self._set_status("Locating embedded Python...")
+        self._log("Checking for embedded Python 3.11...")
 
-        PYTHON_311_URL = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe"
-        PYTHON_311_VERSION = "3.11.9"
-        DOWNLOAD_PAGE = "https://www.python.org/downloads/release/python-3119/"
-
-        def check_exe(cmd):
-            """Return cmd if it resolves to Python 3.11, else None."""
-            import ast
-            try:
-                result = subprocess.run(
-                    cmd + ["-c", "import sys; print(sys.version_info[:2])"],
-                    capture_output=True, text=True, timeout=10
-                )
-                if result.returncode == 0 and ast.literal_eval(result.stdout.strip()) == (3, 11):
-                    return cmd
-            except Exception:
-                pass
-            return None
-
-        # Try Windows Launcher first (most reliable on Windows)
-        found = check_exe(["py", "-3.11"])
-
-        # Fall back to explicit names on PATH
-        if not found:
-            import shutil
-            for name in ("python3.11", "python"):
-                path = shutil.which(name)
-                if path:
-                    result = check_exe([path])
-                    if result:
-                        found = [path]
-                        break
-
-        if found:
-            self.python311_exe = found
-            self._log(f"Python 3.11 found: {' '.join(found)}", "ok")
-            self._set_progress(5)
-            return
-
-        # Not found — download and install
-        self._log(f"Python 3.11 not found. Downloading Python {PYTHON_311_VERSION}...", "info")
-        self._log(f"  Source: {PYTHON_311_URL}", "info")
-
-        installer_path = os.path.join(tempfile.gettempdir(), "python311_installer.exe")
-
-        try:
-            def _progress(block_num, block_size, total_size):
-                if total_size > 0:
-                    pct = min(block_num * block_size / total_size, 1.0)
-                    # Map download to 0-4% of overall progress
-                    self._set_progress(pct * 4)
-
-            urllib.request.urlretrieve(PYTHON_311_URL, installer_path, reporthook=_progress)
-        except Exception as e:
+        python_exe = os.path.join(GIZMO_DIR, "python", "python.exe")
+        if not os.path.isfile(python_exe):
             raise RuntimeError(
-                f"Failed to download Python 3.11: {e}\n\n"
-                f"Please install Python 3.11 manually:\n"
-                f"  1. Go to: {DOWNLOAD_PAGE}\n"
-                f"  2. Scroll to the bottom of the page and click 'Windows installer (64-bit)' from the 'Version' table at the bottom of the page\n"
-                f"  3. Run it, tick 'Add Python to PATH', complete the install\n"
-                f"  4. Re-run setup.bat"
+                "Embedded Python not found at:\n{}\n\n"
+                "Please re-run setup.bat to download and unpack it.".format(python_exe)
             )
 
-        self._log("Download complete. Running Python 3.11 installer...", "info")
-
-        try:
-            result = subprocess.run([
-                installer_path,
-                "/quiet",
-                "InstallAllUsers=0",
-                "PrependPath=1",
-                "Include_launcher=1",
-                "SimpleInstall=1",
-            ], timeout=300)
-        except subprocess.TimeoutExpired:
-            raise RuntimeError(
-                "Python 3.11 installer timed out.\n\n"
-                f"Please install Python 3.11 manually from: {DOWNLOAD_PAGE}\n"
-                f"  Scroll to the bottom of the page and click 'Windows installer (64-bit)' from the 'Version' table at the bottom of the page. Be sure to check 'Add Python to PATH', then re-run setup.bat."
-            )
-
-        if result.returncode != 0:
-            if result.returncode == 1603:
-                raise RuntimeError(
-                    "Python 3.11 installer failed (code 1603). This usually means Python 3.11 "
-                    "is already installed on your system but was not detected automatically.\n\n"
-                    "Please check that 'Add Python to PATH' was selected when you installed it, "
-                    "then re-run setup.bat.\n\n"
-                    f"If you need to reinstall: {DOWNLOAD_PAGE}\n"
-                    f"  Scroll to the bottom of the page and click 'Windows installer (64-bit)' from the 'Version' table at the bottom of the page. Be sure to check 'Add Python to PATH', then re-run setup.bat."
-                )
-            raise RuntimeError(
-                f"Python 3.11 installer exited with code {result.returncode}.\n\n"
-                f"Please install Python 3.11 manually from: {DOWNLOAD_PAGE}\n"
-                f"  Scroll to the bottom of the page and click 'Windows installer (64-bit)' from the 'Version' table at the bottom of the page. Be sure to check 'Add Python to PATH', then re-run setup.bat."
-            )
-
-        self._log("Python 3.11 installed successfully.", "ok")
-
-        # Verify it's now findable
-        found = check_exe(["py", "-3.11"])
-        if not found:
-            import shutil
-            path = shutil.which("python3.11")
-            if path:
-                found = check_exe([path])
-
-        if not found:
-            raise RuntimeError(
-                "Python 3.11 was installed but still cannot be found.\n\n"
-                f"Please restart your PC and re-run setup.bat, or install 'Windows installer (64-bit)' manually from: {DOWNLOAD_PAGE}"
-            )
-
-        self.python311_exe = found
-        self._log(f"Python 3.11 confirmed: {' '.join(found)}", "ok")
+        self.python311_exe = [python_exe]
+        self._log("Embedded Python found: {}".format(python_exe), "ok")
         self._set_progress(5)
 
-    def _step_create_venv(self):
-        self._set_status("Creating Python virtual environment...")
-        import subprocess, shutil
+    def _step_bootstrap_pip(self):
+        self._set_status("Bootstrapping pip into embedded Python...")
+        import subprocess, urllib.request, tempfile
 
-        # Check if existing venv is stale (points to a different Python path)
-        pip_path = os.path.join(VENV_DIR, "Scripts", "pip.exe")
-        pyvenv_cfg = os.path.join(VENV_DIR, "pyvenv.cfg")
-        if os.path.isdir(VENV_DIR):
-            stale = True
-            if os.path.isfile(pyvenv_cfg):
-                with open(pyvenv_cfg) as f:
-                    for line in f:
-                        if line.startswith("home"):
-                            # home points to the Python that created the venv
-                            # if that path still exists, venv is likely fine
-                            home_path = line.split("=", 1)[1].strip()
-                            if os.path.isdir(home_path):
-                                stale = False
-                            break
-            if stale:
-                self._log("Existing venv is stale or relocated. Removing...", "info")
-                shutil.rmtree(VENV_DIR)
-                self._log("Stale venv removed.", "ok")
-            else:
-                self._log("Existing venv found and appears valid.", "ok")
-                self._set_progress(10)
-                return
 
-        self._log("Creating venv...")
+        python_exe = self.python311_exe[0]
+        pip_check = subprocess.run(
+            [python_exe, "-m", "pip", "--version"],
+            capture_output=True
+        )
+        if pip_check.returncode == 0:
+            self._log("pip already available. Skipping get-pip.", "ok")
+            self._set_progress(10)
+            return
+
+        self._log("pip not found. Downloading get-pip.py...")
+        get_pip_url  = "https://bootstrap.pypa.io/get-pip.py"
+        get_pip_path = os.path.join(tempfile.gettempdir(), "get-pip.py")
+
+        try:
+            urllib.request.urlretrieve(get_pip_url, get_pip_path)
+        except Exception as e:
+            raise RuntimeError(
+                "Failed to download get-pip.py: {}\n\n"
+                "To install manually:\n"
+                "  1. Download https://bootstrap.pypa.io/get-pip.py\n"
+                "  2. Place it anywhere on this machine\n"
+                "  3. Run: {}  path\\to\\get-pip.py\n"
+                "  4. Re-run setup.bat".format(e, python_exe)
+            )
+
+        self._log("Running get-pip.py...")
         result = subprocess.run(
-            self.python311_exe + ["-m", "venv", VENV_DIR],
+            [python_exe, get_pip_path],
             capture_output=True, text=True
         )
         if result.returncode != 0:
-            raise RuntimeError(f"venv creation failed:\n{result.stderr}")
+            raise RuntimeError(
+                "get-pip.py failed:\n{}".format(result.stderr)
+            )
 
-        pip_path = os.path.join(VENV_DIR, "Scripts", "pip.exe")
-        if not os.path.isfile(pip_path):
-            raise RuntimeError(f"venv created but pip.exe not found at {pip_path}.")
-
-        self._log("venv created.", "ok")
+        self._log("pip installed successfully.", "ok")
         self._set_progress(10)
 
     def _step_install_deps(self):
         self._set_status("Installing dependencies (this may take several minutes)...")
         self._log("Installing pip dependencies...")
         import subprocess
+
+        pip_env = os.environ.copy()
+        pip_env["PYTHONNOUSERSITE"] = "1"
 
         base_packages = [
             ["diffusers==0.37.1"],
@@ -1051,12 +949,13 @@ class InstallerApp(tk.Tk):
 
         packages = base_packages + variant_packages.get(self.model_variant.get(), [])
 
-        venv_python = os.path.join(VENV_DIR, "Scripts", "python.exe")
+        python_exe = self.python311_exe[0]
 
         self._log("Upgrading pip...")
         proc = subprocess.Popen(
-            [venv_python, "-m", "pip", "install", "--upgrade", "pip"],
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+            [python_exe, "-m", "pip", "install", "--upgrade", "--no-user", "--no-warn-script-location", "pip"],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            env=pip_env
         )
         for line in proc.stdout:
             line = line.rstrip()
@@ -1066,8 +965,9 @@ class InstallerApp(tk.Tk):
 
         self._log("Installing Torch with CUDA support...")
         result = subprocess.run(
-            [venv_python, "-m", "pip", "install", "torch==2.6.0+cu124", "--index-url", "https://download.pytorch.org/whl/cu124"],
+            [python_exe, "-m", "pip", "install", "torch==2.6.0+cu124", "--index-url", "https://download.pytorch.org/whl/cu124", "--no-user", "--no-warn-script-location"],
             capture_output=True,
+            env=pip_env
         )
 
         self._log(f"returncode: {result.returncode}", "info")
@@ -1077,13 +977,14 @@ class InstallerApp(tk.Tk):
         for i, pkg in enumerate(packages):
                 self._log(f"  pip install {pkg[0]}")
 
-                cmd = [venv_python, "-m", "pip", "install"] + pkg
+                cmd = [python_exe, "-m", "pip", "install", "--no-user", "--no-warn-script-location"] + pkg
 
                 proc = subprocess.Popen(
                     cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,
+                    env=pip_env
                 )
 
                 for line in proc.stdout:
@@ -1107,12 +1008,12 @@ class InstallerApp(tk.Tk):
         if not token:
             raise RuntimeError("No Hugging Face token provided.")
 
-        venv_python     = os.path.join(VENV_DIR, "Scripts", "python.exe")
+        python_exe     = self.python311_exe[0]
         download_script = os.path.join(GIZMO_DIR, "download_models.py")
         dest            = self.model_dir.get().strip()
 
         proc = subprocess.Popen(
-            [venv_python, download_script, "--token", token, "--output", dest, "--variant", self.model_variant.get()],
+            [python_exe, download_script, "--token", token, "--output", dest, "--variant", self.model_variant.get()],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -1188,7 +1089,7 @@ class InstallerApp(tk.Tk):
         ).pack(anchor="w", pady=(0, 12))
 
         summary_items = [
-            ("Python venv created",    "_done_lbl_venv"),
+            ("Embedded Python ready",    "_done_lbl_python"),
             ("Model components ready", "_done_lbl_models"),
             ("config.json written",    "_done_lbl_config"),
         ]
@@ -1261,7 +1162,7 @@ class InstallerApp(tk.Tk):
             "Model paths configured" if self.manual_mode
             else self.model_dir.get().strip()
         )
-        self._done_lbl_venv.config(text=f"  -  {VENV_DIR.replace(chr(92), '/')}")
+        self._done_lbl_python.config(text=f"  -  {PYTHON_DIR.replace(chr(92), '/')}")
         self._done_lbl_models.config(text=f"  -  {models_detail}")
         self._done_lbl_config.config(text=f"  -  {CONFIG_PATH.replace(chr(92), '/')}")
 

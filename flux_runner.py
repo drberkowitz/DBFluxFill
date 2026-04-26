@@ -161,9 +161,9 @@ def load_pipeline(args, model_variant):
         from transformers import CLIPTextModel, CLIPTokenizer, T5EncoderModel, T5TokenizerFast
     except ImportError as e:
         print("ERROR: Failed to import required libraries: {}".format(e), file=sys.stderr)
-        print("ERROR: Make sure the venv was set up correctly.", file=sys.stderr)
+        print("ERROR: Make sure the embedded Python environment was set up correctly by running setup.bat", file=sys.stderr)
         _log("ERROR: Failed to import required libraries: {}".format(e))
-        _log("ERROR: Make sure the venv was set up correctly.")
+        _log("ERROR: Make sure the embedded Python environment was set up correctly by running setup.bat")
         sys.exit(2)
 
     try:
@@ -367,11 +367,14 @@ def run_inference(pipe, input_img, mask_img, args):
                 elapsed_str  = "{:02d}:{:05.2f}".format(int(elapsed // 60), elapsed % 60)
                 remaining_str = "{:02d}:{:05.2f}".format(int(remaining // 60), remaining % 60)
                 per_it = "{:.2f}s/it".format(avg_step)
-                _log("INFO: {}%|{}| {}/{} [{}<{}, {}]".format(
+                msg = "INFO: {}%|{}| {}/{} [{}<{}, {}]".format(
                     pct, bar, completed, total_steps,
-                    elapsed_str, remaining_str, per_it))
+                    elapsed_str, remaining_str, per_it)
             else:
-                _log("INFO: {}%|{}| {}/{}".format(pct, bar, completed, total_steps))
+                msg = "INFO: {}%|{}| {}/{}".format(pct, bar, completed, total_steps)
+            
+            if _log_path:
+                _log(msg)
 
             return callback_kwargs
 
@@ -384,6 +387,8 @@ def run_inference(pipe, input_img, mask_img, args):
             generator=generator,
             height=input_img.height,
             width=input_img.width,
+            callback_on_step_end=step_callback,
+            callback_on_step_end_tensor_inputs=["latents"],
         ).images[0]
 
         _log("INFO: Inference complete.")

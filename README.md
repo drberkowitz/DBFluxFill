@@ -1,8 +1,8 @@
-# DBFluxFill
+# DBFluxFill - FLUX.1 Fill Dev inside Nuke
 
 DBFluxFill is a Nuke gizmo that brings [FLUX.1 Fill Dev](https://huggingface.co/black-forest-labs/FLUX.1-Fill-dev) inpainting directly into your Nuke workflow. Connect an image and hit Generate. The result drops back into your node graph as a Read node, ready to comp.
 
-It was built specifically for Nuke artists who may have never used ComfyUI, are not familar with that much Python, or don't want to learn another tool. The installer walks the user through everything, downloads the model components, builds a venv, has a Nuke Indie option, and even helps you set up your init.py file.
+It was built specifically for Nuke artists who may have never used ComfyUI, are not familar with that much Python, or don't want to learn another tool. The installer walks the user through everything, downloads the model components, sets up an embedded Python environment, has a Nuke Indie option, and even helps you set up your init.py file.
 
 **License note:** DBFluxFill is a free, open-source tool. The underlying FLUX.1 Fill Dev model is subject to the [FLUX.1 [dev] License](https://huggingface.co/black-forest-labs/FLUX.1-Fill-dev/blob/main/LICENSE.md).
 
@@ -25,8 +25,6 @@ It was built specifically for Nuke artists who may have never used ComfyUI, are 
 **Platform:** Windows 10 or 11 only
 
 **Nuke:** Nuke 13.2v8 or later (built for 13.2, but tested on later versions)
-
-**Python:** [Python 3.11](https://www.python.org/downloads/release/python-3110/) must be installed and on your system PATH. The installer checks this on launch and will offer to download and install Python 3.11 for you.
 
 **GPU:** Nvidia GPU with CUDA 12.4+ drivers required
 - The installer checks this on launch and will warn you if your drivers are out of date
@@ -67,10 +65,12 @@ Inside the `DBFluxFill` folder, double-click `setup.bat`.
 This launches the DBFluxFill installer, a step-by-step GUI that handles everything else:
 
 - Downloading and installing Python 3.11 if necessary
-- Creating a Python virtual environment
+- Setting up an embedded Python environment
 - Installing all dependencies (including the correct PyTorch CUDA build)
 - Downloading your chosen model variant from Hugging Face
 - Writing the configuration file
+
+![The DBFluxFill installer welcome screen](https://github.com/user-attachments/assets/f67fafce-c5cc-40d2-852e-38bd8cb19cf9)
 
 The installer has six screens:
 
@@ -82,7 +82,7 @@ The installer has six screens:
 
 **Model Setup** — Enter your Hugging Face token and choose where to store the models. If you prefer to download components manually, there is a link to the manual setup path from this screen.
 
-**Installing** — The installer creates the venv, installs dependencies, and downloads the model. This will take a while depending on your internet speed. A live log shows progress.
+**Installing** — The installer sets up the embedded Python environment, installs dependencies, and downloads the model. This will take a while depending on your internet speed. A live log shows progress.
 
 **Done** — Shows a summary of what was installed and displays the code snippet you need to add to your `init.py`. See Step 3 below.
 
@@ -135,7 +135,7 @@ The installer applies a required `config.json` patch and places the `.gguf` file
 
 - HuggingFace: [YarvixPA/FLUX.1-Fill-dev-GGUF](https://huggingface.co/YarvixPA/FLUX.1-Fill-dev-GGUF)
 
-*To switch variants later, re-run `setup.bat` and select a different variant. The installer will update your venv dependencies and rewrite `config.json`. If you want to free the disk space used by the previous variant, delete the models folder before re-running.*
+*To switch variants later, re-run `setup.bat` and select a different variant. The installer will update dependencies and rewrite `config.json`. If you want to free the disk space used by the previous variant, delete the models folder before re-running.*
 
 ---
 
@@ -178,7 +178,7 @@ After downloading, you must overwrite `transformer/config.json` with the one fro
 
 ## Using DBFluxFill
 
-<!-- SCREENSHOT PLACEHOLDER: DBFluxFill node in Nuke node graph with inputs connected -->
+![DBFluxFill in the node graph](https://github.com/user-attachments/assets/b53c746a-9f9c-4298-84f9-f3db64cd3b34)
 
 ### Setting up the node
 
@@ -188,7 +188,7 @@ After downloading, you must overwrite `transformer/config.json` with the one fro
 
 ### Generating
 
-<!-- SCREENSHOT PLACEHOLDER: DBFluxFill properties panel showing main tab knobs -->
+![DBFluxFill properties panel showing main tab knobs](https://github.com/user-attachments/assets/3486f058-0aa5-4b31-9e97-3de7c7c52753)
 
 **Main tab knobs:**
 
@@ -217,7 +217,9 @@ When you hit **Generate**, Nuke will open a command prompt window showing the in
 
 When generation finishes, a Read node is dropped into your node graph with the result. It includes a **DBFluxFill Settings** tab showing the seed, steps, guidance, and prompt used, all read-only for reference.
 
-<!-- SCREENSHOT PLACEHOLDER: Result Read node dropped into node graph, DBFluxFill Settings tab visible -->
+![Result Read node dropped into node graph](https://github.com/user-attachments/assets/20c681d1-c27e-4e87-91a3-caaa832d7031)
+
+![DBFluxFill settings tab showing seed, steps, guidence, and prompt used](https://github.com/user-attachments/assets/00d3a406-1603-4239-8e23-5af50cac4f72)
 
 ---
 

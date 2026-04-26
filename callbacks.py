@@ -43,6 +43,11 @@ def _get_gizmo_dir():
             return candidate
     return os.path.dirname(os.path.abspath(__file__))
 
+def _get_python_exe():
+    """Return path to the embedded Python executable."""
+    gizmo_dir = _get_gizmo_dir()
+    return os.path.join(gizmo_dir, "python", "python.exe")
+
 
 def _load_config():
     """Load config.json from the gizmo folder. Returns dict or empty dict on failure."""
@@ -88,18 +93,31 @@ def _validate_components(config):
 
 def _validate_environment(config):
     """
-    Check that the venv Python executable exists.
+    Check that the Python executable exists.
     Returns an error string, or None if all good.
     """
-    gizmo_dir   = _get_gizmo_dir()
-    venv_python = os.path.join(gizmo_dir, "venv", "Scripts", "python.exe")
-    if not os.path.isfile(venv_python):
+    python_exe = _get_python_exe()
+    if not os.path.isfile(python_exe):
         return (
-            "venv Python not found.\n\n"
+            "Embedded Python not found.\n\n"
             "Expected:\n{}\n\n"
-            "Please run setup.bat to set up the environment.".format(venv_python)
+            "Please run setup.bat to set up the environment.".format(python_exe)
         )
     return None
+
+def _build_subprocess_env():
+    """
+    Build an env dict that prepends the embedded Python directory to PATH.
+    This ensures Windows finds python311.dll and all bundled DLLs correctly,
+    preventing 0xC0000135 errors regardless of system Python state.
+    """
+    python_exe = _get_python_exe()
+    python_dir = os.path.dirname(python_exe)
+    env = os.environ.copy()
+    env["PATH"] = python_dir + os.pathsep + env.get("PATH", "")
+    env["HF_HUB_OFFLINE"]       = "1"
+    env["TRANSFORMERS_OFFLINE"]  = "1"
+    return env
 
 # ---------------------------------------------------------------------------
 # Daemon management
@@ -122,10 +140,13 @@ def _open_log_window(log_path):
         "cmd.exe", "/c", "start",
         "DBFluxFill - Generation Log",
         "powershell.exe", "-Command",
-        "Get-Content -Path '{}' -Wait -Tail 30".format(log_path)
+        "while (-not (Test-Path '{0}')) {{ Start-Sleep -Milliseconds 200 }}; Get-Content -Path '{0}' -Wait -Tail 50".format(log_path)
     ]
     try:
-        _log_window_proc = subprocess.Popen(cmd, creationflags=0)
+        _log_window_proc = subprocess.Popen(
+            cmd,
+            creationflags=subprocess.CREATE_NEW_CONSOLE,
+        )
     except Exception as e:
         print("DBFluxFill: Could not open log window: {}".format(e))
 
@@ -141,12 +162,12 @@ def _start_daemon(config, log_path):
     _daemon_log_path = log_path
 
     gizmo_dir   = _get_gizmo_dir()
-    venv_python = os.path.join(gizmo_dir, "venv", "Scripts", "python.exe")
+    python_exe = _get_python_exe()
     runner      = os.path.join(gizmo_dir, "flux_runner.py")
     components  = config.get("components", {})
 
     cmd = [
-        venv_python, runner,
+        python_exe, runner,
         "--daemon",
         "--log",            log_path,
         "--transformer",    components["transformer"],
@@ -170,6 +191,7 @@ def _start_daemon(config, log_path):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             creationflags=0,
+            env=_build_subprocess_env(),
         )
     except Exception as e:
         nuke.message("DBFluxFill: Failed to launch daemon.\n\n{}".format(e))
@@ -474,7 +496,7 @@ def _run_flux_oneshot(config, temp_img, temp_mask, output_path,
     Returns (success, resolved_seed).
     """
     gizmo_dir   = _get_gizmo_dir()
-    venv_python = os.path.join(gizmo_dir, "venv", "Scripts", "python.exe")
+    python_exe = _get_python_exe()
     runner      = os.path.join(gizmo_dir, "flux_runner.py")
 
     out_dir = os.path.dirname(output_path)
@@ -486,7 +508,7 @@ def _run_flux_oneshot(config, temp_img, temp_mask, output_path,
             return False, -1
 
     cmd = [
-        venv_python, runner,
+        python_exe, runner,
         "--input",          temp_img,
         "--mask",           temp_mask,
         "--output",         output_path,
@@ -500,7 +522,7 @@ def _run_flux_oneshot(config, temp_img, temp_mask, output_path,
         "--steps",          str(steps),
         "--guidance",       str(guidance),
         "--seed",           str(seed),
-        "--prompt",         prompt,
+        "--prompt",         prompt if prompt else " ",
     ]
 
     print("DBFluxFill: Launching one-shot runner...")
@@ -512,11 +534,11 @@ def _run_flux_oneshot(config, temp_img, temp_mask, output_path,
             "Nuke will be unresponsive until generation completes.\n\n"
             "Click OK to start."
         )
+
         process = subprocess.Popen(
-            cmd,
-            stdout=None,
-            stderr=None,
+            [python_exe, runner] + cmd[2:],
             creationflags=subprocess.CREATE_NEW_CONSOLE,
+            env=_build_subprocess_env(),
         )
         process.wait()
 
