@@ -44,7 +44,7 @@ It was built specifically for Nuke artists who may have never used ComfyUI, are 
 
 Click the green `<> Code` button at the top of this page. Select `Download ZIP` and unzip the downloaded folder.
 
-Copy the `DBFluxFill` folder into your `.nuke` directory:
+Rename `DBFluxFill-main` to `DBFluxFill` and copy it into your `.nuke` directory:
 
 ```
 C:\Users\YourName\.nuke\DBFluxFill\
