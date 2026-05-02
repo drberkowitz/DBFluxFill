@@ -217,7 +217,6 @@ push $Ndb3d0000
  }
 set Nb8754c00 [stack 0]
  Write {
-  file E:/Jobs/ChristmasCard2025/ChristmasCard2025_comp_v02-fluxfill-20260327_023810-tempImg.png
   colorspace sRGB
   file_type png
   datatype "16 bit"
@@ -256,7 +255,6 @@ push $N54260c00
  }
 set N9e74e400 [stack 0]
  Write {
-  file E:/Jobs/ChristmasCard2025/ChristmasCard2025_comp_v02-fluxfill-20260327_023810-tempMask.png
   colorspace sRGB
   file_type png
   datatype "16 bit"
