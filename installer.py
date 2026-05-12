@@ -134,11 +134,19 @@ def _detect_cuda():
                     parts = line.split("CUDA Version:")
                     cuda_version = parts[1].strip().split()[0]
                     break
+            
+            sm_result = subprocess.run(
+                ["nvidia-smi", "--query-gpu=compute_cap", "--format=csv,noheader"],
+                capture_output=True, text=True, timeout=5
+            )
+            compute_cap = None
+            if sm_result.returncode == 0 and sm_result.stdout.strip():
+                compute_cap = sm_result.stdout.strip()  # e.g. "12.0"
 
-            return gpu_name, cuda_version
+            return gpu_name, cuda_version, compute_cap
     except Exception:
         pass
-    return None, None
+    return None, None, None
 
 # ---------------------------------------------------------------------------
 # Main application
@@ -168,7 +176,7 @@ class InstallerApp(tk.Tk):
         }
 
         # -- Detect GPU info upfront for display in the welcome screen --
-        self.gpu_name, self.cuda_version = _detect_cuda()
+        self.gpu_name, self.cuda_version, self.compute_cap = _detect_cuda()
 
         # -- Header + step indicator --
         self._build_header()
@@ -365,6 +373,16 @@ class InstallerApp(tk.Tk):
             and self.cuda_version is not None
             and tuple(int(x) for x in self.cuda_version.split(".")[:2]) >= (12, 4)
         )
+        is_blackwell = (
+            self.compute_cap is not None
+            and tuple(int(x) for x in self.compute_cap.split(".")) >= (12, 0)
+        )
+        cuda_ok_for_device = (
+            cuda_ok and (
+                not is_blackwell
+                or tuple(int(x) for x in self.cuda_version.split(".")[:2]) >= (12, 8)
+            )
+        )
 
         cuda_display = f"{self.cuda_version}" if self.cuda_version else "Not detected"
         if self.cuda_version and tuple(int(x) for x in self.cuda_version.split(".")[:2]) < (12, 4):
@@ -400,7 +418,7 @@ class InstallerApp(tk.Tk):
             if is_gpu_row:
                 color = "#2d6a2d" if (self.gpu_name and "nvidia" in self.gpu_name.lower()) else "#aa2222"
             if is_cuda_row:
-                color = "#2d6a2d" if cuda_ok else "#aa2222"
+                color = "#2d6a2d" if cuda_ok_for_device else "#aa2222"
             
             tk.Label(
                 req_frame,
@@ -413,6 +431,16 @@ class InstallerApp(tk.Tk):
                     padx=(0, 24),
                     pady=2
                     )
+            
+        if is_blackwell and cuda_ok_for_device:
+            tk.Label(
+                f,
+                text=f"Blackwell GPU detected ({self.compute_cap}). PyTorch will be installed with CUDA 12.8 support automatically.",
+                wraplength=WINDOW_WIDTH - 60,
+                justify="center",
+                fg="#888888",
+                font=("Helvetica", 9),
+            ).pack(fill="x")
 
         # Info note
         tk.Label(
@@ -426,16 +454,24 @@ class InstallerApp(tk.Tk):
             pady=24,
         ).pack(fill="x")
 
-        if not cuda_ok:
+        if not cuda_ok_for_device:
             if self.gpu_name and "nvidia" in self.gpu_name.lower():
-                warn_text = (
-                    f"Your CUDA version ({self.cuda_version}) is below the required 12.4. Please update your Nvidia drivers to enable CUDA 12.4 support."
-                )
+                if is_blackwell:
+                    warn_text = (
+                        f"Your CUDA version ({self.cuda_version}) is below the required 12.8 for Blackwell GPUs. "
+                        "Please update your Nvidia drivers to version 570 or later."
+                    )
+                else:
+                    warn_text = (
+                        f"Your CUDA version ({self.cuda_version}) is below the required 12.4. "
+                        "Please update your Nvidia drivers."
+                    )
                 link_text = "Download latest Nvidia drivers: nvidia.com/download/index.aspx"
                 link_url  = "https://www.nvidia.com/download/index.aspx"
             else:
                 warn_text = (
-                    "No Nvidia GPU detected. DBFluxFill requires an Nvidia GPU with CUDA 12.4 or later. AMD and Intel GPUs are not supported. Generation on CPU is possible but will be extremely slow (hours per image)."
+                    "No Nvidia GPU detected. DBFluxFill requires an Nvidia GPU. "
+                    "AMD and Intel GPUs are not supported. Generation on CPU is possible but will be extremely slow (hours per image)."
                 )
                 link_text = "Download Nvidia drivers: nvidia.com/download/index.aspx"
                 link_url  = "https://www.nvidia.com/download/index.aspx"
@@ -921,6 +957,37 @@ class InstallerApp(tk.Tk):
 
         self._log("pip installed successfully.", "ok")
         self._set_progress(10)
+    
+    def _resolve_torch_build(self):
+        """
+        Returns (torch_package, index_url) based on detected GPU compute capability.
+        Falls back to cu124 / 2.6.0 for cards that don't need the newer build.
+        """
+        try:
+            if self.compute_cap:
+                major, minor = (int(x) for x in self.compute_cap.split("."))
+                sm = major * 10 + minor
+                if sm >= 120:
+                    return "torch==2.7.0+cu128", "https://download.pytorch.org/whl/cu128"
+        except Exception:
+            pass
+        return "torch==2.6.0+cu124", "https://download.pytorch.org/whl/cu124"
+    
+    def _resolve_torchao_version(self):
+        """
+        Returns the correct torchao pin based on GPU compute capability.
+        Blackwell (sm_120+) needs torchao>=0.14.0 for torch 2.7.0 compatibility.
+        Everyone else gets torchao==0.9.0.
+        """
+        try:
+            if self.compute_cap:
+                major, minor = (int(x) for x in self.compute_cap.split("."))
+                sm = major * 10 + minor
+                if sm >= 120:
+                    return "torchao>=0.14.0"
+        except Exception:
+            pass
+        return "torchao==0.9.0"
 
     def _step_install_deps(self):
         self._set_status("Installing dependencies (this may take several minutes)...")
@@ -942,7 +1009,7 @@ class InstallerApp(tk.Tk):
         ]
 
         variant_packages = {
-            "fp8":  [["torchao==0.9.0"]],
+            "fp8":  [[self._resolve_torchao_version()]],
             "gguf": [["gguf>=0.10.0"]],
             "bf16": [],
         }
@@ -963,16 +1030,20 @@ class InstallerApp(tk.Tk):
                 self._log(f"    {line}")
         proc.wait()
 
-        self._log("Installing Torch with CUDA support...")
+        torch_pkg, torch_index = self._resolve_torch_build()
+        self._log(f"Installing Torch: {torch_pkg} from {torch_index}...")
         result = subprocess.run(
-            [python_exe, "-m", "pip", "install", "torch==2.6.0+cu124", "--index-url", "https://download.pytorch.org/whl/cu124", "--no-user", "--no-warn-script-location"],
+            [python_exe, "-m", "pip", "install", torch_pkg,
+            "--index-url", torch_index, "--no-user", "--no-warn-script-location"],
             capture_output=True,
             env=pip_env
         )
 
         self._log(f"returncode: {result.returncode}", "info")
         self._log(f"stdout: {result.stdout.decode('utf-8', errors='replace')[:500]}", "info")
-        self._log(f"stderr: {result.stderr.decode('utf-8', errors='replace')[:500]}", "err")
+        if result.returncode != 0:
+            self._log(f"stderr: {result.stderr.decode('utf-8', errors='replace')[:500]}", "err")
+            raise RuntimeError(f"Failed to install {torch_pkg}. Check log above.")
 
         for i, pkg in enumerate(packages):
                 self._log(f"  pip install {pkg[0]}")

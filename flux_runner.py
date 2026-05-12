@@ -192,17 +192,28 @@ def load_pipeline(args, model_variant):
             )
         elif model_variant == "fp8":
             try:
-                from torchao.quantization import quantize_, float8_dynamic_activation_float8_weight
+                from torchao.quantization import quantize_
+                try:
+                    # torchao >= 0.14.0 API
+                    from torchao.quantization import Float8DynamicActivationFloat8WeightConfig
+                    fp8_config = Float8DynamicActivationFloat8WeightConfig()
+                    _log("INFO: torchao >= 0.14.0 API detected.")
+                except ImportError:
+                    # torchao == 0.9.0 API fallback
+                    from torchao.quantization import float8_dynamic_activation_float8_weight
+                    fp8_config = float8_dynamic_activation_float8_weight()
+                    _log("INFO: torchao 0.9.0 API detected (fallback).")
             except ImportError as e:
                 _log("ERROR: torchao not available for fp8 variant: {}".format(e))
                 sys.exit(2)
+
             transformer = FluxTransformer2DModel.from_pretrained(
                 args.transformer,
                 torch_dtype=torch.bfloat16,
                 local_files_only=True,
             )
             _log("INFO: Applying fp8 quantization...")
-            quantize_(transformer, float8_dynamic_activation_float8_weight())
+            quantize_(transformer, fp8_config)
             transformer.to("cuda")
         elif model_variant == "gguf":
             try:
