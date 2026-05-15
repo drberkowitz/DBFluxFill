@@ -298,6 +298,12 @@ def load_pipeline(args, model_variant):
             if vram_gb < 16.0:
                 _log("INFO: VRAM under 16GB, enabling attention slicing.")
                 pipe.enable_attention_slicing()
+                pipe.enable_model_cpu_offload()
+            else:
+                _log("INFO: Sufficient VRAM detected, keeping full pipeline on GPU.")
+
+            _log("INFO: Enabling VAE slicing.")
+            pipe.vae.enable_slicing()
 
         _log("INFO: Pipeline loaded successfully.")
         return pipe
@@ -388,19 +394,20 @@ def run_inference(pipe, input_img, mask_img, args):
                 _log(msg)
 
             return callback_kwargs
-
-        result = pipe(
-            prompt=args.prompt,
-            image=input_img,
-            mask_image=mask_img,
-            num_inference_steps=args.steps,
-            guidance_scale=args.guidance,
-            generator=generator,
-            height=input_img.height,
-            width=input_img.width,
-            callback_on_step_end=step_callback,
-            callback_on_step_end_tensor_inputs=["latents"],
-        ).images[0]
+        
+        with torch.inference_mode():
+            result = pipe(
+                prompt=args.prompt,
+                image=input_img,
+                mask_image=mask_img,
+                num_inference_steps=args.steps,
+                guidance_scale=args.guidance,
+                generator=generator,
+                height=input_img.height,
+                width=input_img.width,
+                callback_on_step_end=step_callback,
+                callback_on_step_end_tensor_inputs=["latents"],
+            ).images[0]
 
         _log("INFO: Inference complete.")
         return result, seed

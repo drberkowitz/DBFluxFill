@@ -1142,6 +1142,18 @@ class InstallerApp(tk.Tk):
         self._log(f"config.json written to {CONFIG_PATH}", "ok")
         self._set_progress(100)
 
+    def _load_existing_config(self):
+        """Returns the components dict from an existing config.json, or None."""
+        if not os.path.isfile(CONFIG_PATH):
+            return None
+        try:
+            import json
+            with open(CONFIG_PATH, "r") as f:
+                data = json.load(f)
+            return data.get("components")
+        except Exception:
+            return None
+
     # -----------------------------------------------------------------------
     # Screen 5 - Done
     # -----------------------------------------------------------------------
@@ -1353,6 +1365,12 @@ class InstallerApp(tk.Tk):
             self.manual_paths[name].set(chosen.replace("\\", "/"))
 
     def _refresh_manual_screen(self):
+        existing = self._load_existing_config()
+        if existing:
+            for name, _, subfolder in MODEL_COMPONENTS:
+                if subfolder in existing:
+                    self.manual_paths[name].set(existing[subfolder])
+                    
         variant = self.model_variant.get()
         size, transformer_url = TRANSFORMER_INFO[variant]
         self._manual_transformer_size.config(text=size)

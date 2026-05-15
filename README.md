@@ -1,5 +1,8 @@
 # DBFluxFill - FLUX.1 Fill Dev inside Nuke
 
+![Platform](https://img.shields.io/badge/platform-windows-0075ca) ![Nuke](https://img.shields.io/badge/nuke-13.2v8%2B-0d9488) ![Nuke Indie](https://img.shields.io/badge/nuke%20indie-supported-2da44e) ![CUDA](https://img.shields.io/badge/cuda-12.4%2B-e6720d) ![Python](https://img.shields.io/badge/python-3.11-0075ca)
+![Model](https://img.shields.io/badge/model-FLUX.1%20Fill%20Dev-7c3aed) ![Diffusers](https://img.shields.io/badge/diffusers-0.37.x-e6720d) ![Torch](https://img.shields.io/badge/torch-2.6.0%2Bcu124-e6720d) ![Quantization](https://img.shields.io/badge/quantization-fp8%20%C2%B7%20gguf%20%C2%B7%20bf16-4f46e5)
+
 DBFluxFill is a Nuke gizmo that brings [FLUX.1 Fill Dev](https://huggingface.co/black-forest-labs/FLUX.1-Fill-dev) inpainting directly into your Nuke workflow. Connect an image and hit Generate. The result drops back into your node graph as a Read node, ready to comp.
 
 It was built specifically for Nuke artists who may have never used ComfyUI, are not familar with that much Python, or don't want to learn another tool. The installer walks the user through everything, downloads the model components, sets up an embedded Python environment, has a Nuke Indie option, and even helps you set up your init.py file.
